@@ -7,7 +7,6 @@ import MessageBar from "./MessageBar";
 import HealthBar from "./HealthBar";
 import ManaBar from "./ManaBar";
 
-
 let socket;
 
 export default function Game() {
@@ -17,9 +16,12 @@ export default function Game() {
   const [shootingMode, setShootingMode] = useState(false);
   const [selectedSpell, setSelectedSpell] = useState(null);
   const [targetMode, setTargetMode] = useState(false);
-  const [selectedTab, setSelectedTab] = useState('spells');
-
+  const [selectedTab, setSelectedTab] = useState("spells");
+  const [terrain, setTerrain] = useState([]);
+  const [connectedPlayers, setConnectedPlayers] = useState(0);
+  const viewSize = 20;
   const canvasRef = useRef(null);
+  const containerRef = useRef(null);
 
   useEffect(() => {
     socketInitializer();
@@ -33,7 +35,7 @@ export default function Game() {
 
   useEffect(() => {
     if (canvasRef.current) {
-      drawGrid();
+      drawGame();
     }
   }, [players]);
 
@@ -44,12 +46,32 @@ export default function Game() {
     };
   }, [myId, players]);
 
+  useEffect(() => {
+    const resizeCanvas = () => {
+      if (canvasRef.current && containerRef.current) {
+        const containerWidth = containerRef.current.clientWidth;
+        const containerHeight = containerRef.current.clientHeight;
+        const aspectRatio = 1.5; // Ajusta este valor para cambiar la proporción ancho/alto
+
+        canvasRef.current.width = containerWidth * 1.9;
+        canvasRef.current.height = containerWidth * aspectRatio;
+        drawGame();
+      }
+    };
+
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    return () => window.removeEventListener("resize", resizeCanvas);
+  }, [players, terrain]);
+
   const socketInitializer = async () => {
     await fetch("/api/socketio");
     socket = io();
 
     socket.on("init", (data) => {
       setMyId(data.id);
+      setTerrain(data.terrain);
     });
 
     socket.on("players", (playerData) => {
@@ -58,6 +80,46 @@ export default function Game() {
 
     socket.on("message", (msg) => {
       setMessages((prev) => [...prev, msg]);
+    });
+  };
+
+  const drawGame = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext("2d");
+    const cellSize = Math.min(canvas.width, canvas.height) / viewSize;
+    // Limpia el canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const player = players.find(([id]) => id === myId);
+    if (!player) return;
+
+    const [, playerPos] = player;
+    const cameraX = playerPos.x - viewSize / 2;
+    const cameraY = playerPos.y - viewSize / 2;
+
+    // Dibuja el terreno
+    for (let y = 0; y < viewSize; y++) {
+      for (let x = 0; x < viewSize; x++) {
+        const terrainX = Math.floor(cameraX + x);
+        const terrainY = Math.floor(cameraY + y);
+        if (terrainX >= 0 && terrainX < 50 && terrainY >= 0 && terrainY < 50) {
+          ctx.fillStyle =
+            terrain[terrainY][terrainX] === 1 ? "#228B22" : "#808080";
+          ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    // Dibuja los jugadores
+    players.forEach(([id, position, health, mana, poisoned]) => {
+      const x = position.x - cameraX;
+      const y = position.y - cameraY;
+      if (x >= 0 && x < viewSize && y >= 0 && y < viewSize) {
+        ctx.fillStyle = id === myId ? "red" : "black";
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize * 2);
+      }
     });
   };
 
@@ -150,10 +212,16 @@ export default function Game() {
       );
 
       if (clickedPlayer) {
-        socket.emit('castSpell', selectedSpell, clickedPlayer[0]);
-        setMessages((prev) => [...prev, `Lanzaste ${selectedSpell} en X=${x}, Y=${y}`]);
+        socket.emit("castSpell", selectedSpell, clickedPlayer[0]);
+        setMessages((prev) => [
+          ...prev,
+          `Lanzaste ${selectedSpell} en X=${x}, Y=${y}`,
+        ]);
       } else {
-        setMessages((prev) => [...prev, `Click en X=${x}, Y=${y}. No hay objetivo válido.`]);
+        setMessages((prev) => [
+          ...prev,
+          `Click en X=${x}, Y=${y}. No hay objetivo válido.`,
+        ]);
       }
       setTargetMode(false);
     }
@@ -172,7 +240,7 @@ export default function Game() {
   };
 
   const handlePotionUse = (potionType) => {
-    socket.emit('usePotion', potionType);
+    socket.emit("usePotion", potionType);
   };
 
   const handleShootButtonClick = () => {
@@ -187,23 +255,15 @@ export default function Game() {
     }
   };
 
-
   return (
-    <div className="flex h-screen w-full bg-stone-900 text-amber-100">
+    <div className="flex h-screen w-full bg-stone-900 text-amber-100 overflow-hidden">
       {/* First column (3/4 width) */}
       <div className="w-3/4 flex flex-col p-4">
-        {/* Message Bar */}
         <MessageBar messages={messages} />
-
-        {/* Canvas */}
-        <div className="mt-4">
+        <div ref={containerRef} className="flex-grow mt-4 relative w-full">
           <canvas
             ref={canvasRef}
-            width={500}
-            height={500}
-            className={`border-2 border-amber-700 ${
-              targetMode ? "cursor-crosshair" : ""
-            }`}
+            className="absolute top-0 left-0 w-full h-full min-w-full"
             onClick={handleCanvasClick}
           />
         </div>
@@ -214,35 +274,45 @@ export default function Game() {
         {/* Player ID and Health */}
         <div className="mb-4">
           <h3 className="text-lg font-bold text-amber-500">Tu estado:</h3>
-          {players.map(([id, position, health,mana, poisoned]) => (
-            id === myId && (
-              <div key={id} className="mt-2">
-                <p>Posición: ({position.x}, {position.y})</p>
-                <HealthBar health={health} maxHealth={10} poisoned={poisoned} />
-                <ManaBar mana={mana} maxMana={15} />
-
-              </div>
-            )
-          ))}
+          {players.map(
+            ([id, position, health, mana, poisoned]) =>
+              id === myId && (
+                <div key={id} className="mt-2">
+                  <p>
+                    Posición: ({position.x}, {position.y})
+                  </p>
+                  <HealthBar
+                    health={health}
+                    maxHealth={10}
+                    poisoned={poisoned}
+                  />
+                  <ManaBar mana={mana} maxMana={15} />
+                </div>
+              )
+          )}
         </div>
 
         {/* Spell and Potion Selector */}
         <div className="mb-4">
           <div className="flex mb-2">
             <button
-              className={`flex-1 py-2 ${selectedTab === 'spells' ? 'bg-amber-600' : 'bg-stone-700'} text-white rounded-tl rounded-tr`}
-              onClick={() => setSelectedTab('spells')}
+              className={`flex-1 py-2 ${
+                selectedTab === "spells" ? "bg-amber-600" : "bg-stone-700"
+              } text-white rounded-tl rounded-tr`}
+              onClick={() => setSelectedTab("spells")}
             >
               Hechizos
             </button>
             <button
-              className={`flex-1 py-2 ${selectedTab === 'potions' ? 'bg-amber-600' : 'bg-stone-700'} text-white rounded-tl rounded-tr`}
-              onClick={() => setSelectedTab('potions')}
+              className={`flex-1 py-2 ${
+                selectedTab === "potions" ? "bg-amber-600" : "bg-stone-700"
+              } text-white rounded-tl rounded-tr`}
+              onClick={() => setSelectedTab("potions")}
             >
               Pociones
             </button>
           </div>
-          {selectedTab === 'spells' ? (
+          {selectedTab === "spells" ? (
             <>
               <SpellSelector onSelectSpell={handleSelectSpell} />
               <button
@@ -259,18 +329,11 @@ export default function Game() {
 
         {/* Player List */}
         <div>
-          <h3 className="text-lg font-bold text-amber-500">Jugadores:</h3>
-          <ul className="mt-2 space-y-2">
-            {players.map(([id, position, health, poisoned]) => (
-              id !== myId && (
-                <li key={id} className="flex flex-col">
-                  <p>Jugador {id.substr(0, 4)}</p>
-                  <p>Posición: ({position.x}, {position.y})</p>
-                  <HealthBar health={health} maxHealth={10} poisoned={poisoned} />
-                </li>
-              )
-            ))}
-          </ul>
+          <div className="mb-4">
+            <p className="text-amber-500">
+              Jugadores conectados: {connectedPlayers}
+            </p>
+          </div>
         </div>
       </div>
     </div>
