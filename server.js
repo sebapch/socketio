@@ -46,6 +46,16 @@ app.prepare().then(() => {
         io.emit('players', Array.from(players).map(([id, data]) => [id, data.position, data.health]));
       }
     });
+
+    socket.on('heal', () => {
+      const player = players.get(socket.id);
+      if (player) {
+        player.health = 10; // Restaura toda la salud del jugador
+        players.set(socket.id, player);
+        io.emit('players', Array.from(players).map(([id, data]) => [id, data.position, data.health]));
+        socket.emit('message', 'Te has curado completamente');
+      }
+    });
   
     socket.on('attack', (targetId) => {
       const targetPlayer = players.get(targetId);

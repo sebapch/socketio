@@ -1,0 +1,31 @@
+
+{
+    "hechizos": [
+      {
+        "nombre": "CURAR",
+        "descripcion": "Restaura toda la salud del jugador.",
+        "efecto": "curar"
+      },
+      {
+        "nombre": "MAGIA",
+        "descripcion": "Quita 1 punto de vida al enemigo.",
+        "efecto": "atacar"
+      },
+      {
+        "nombre": "FUEGO",
+        "descripcion": "Quita 2 puntos de vida al enemigo.",
+        "efecto": "atacar"
+      },
+      {
+        "nombre": "ESCUDO",
+        "descripcion": "Aumenta en 2 puntos la salud del jugador.",
+        "efecto": "curar"
+      },
+      {
+        "nombre": "RAYO",
+        "descripcion": "Quita 3 puntos de vida al enemigo.",
+        "efecto": "atacar"
+      }
+    ]
+  }
+  
