@@ -2,7 +2,11 @@
 import { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import SpellSelector from "./SpellSelector";
-import PotionSelector from "./PotionSelector"
+import PotionSelector from "./PotionSelector";
+import MessageBar from "./MessageBar";
+import HealthBar from "./HealthBar";
+import ManaBar from "./ManaBar";
+
 
 let socket;
 
@@ -12,6 +16,8 @@ export default function Game() {
   const [messages, setMessages] = useState([]);
   const [shootingMode, setShootingMode] = useState(false);
   const [selectedSpell, setSelectedSpell] = useState(null);
+  const [targetMode, setTargetMode] = useState(false);
+  const [selectedTab, setSelectedTab] = useState('spells');
 
   const canvasRef = useRef(null);
 
@@ -137,29 +143,36 @@ export default function Game() {
     const x = Math.floor((e.clientX - rect.left) / 10);
     const y = Math.floor((e.clientY - rect.top) / 10);
 
-    console.log(`Click en posición: X=${x}, Y=${y}`);
+    if (targetMode && selectedSpell) {
+      const clickedPlayer = players.find(
+        ([, position]) =>
+          position.x === x && (position.y === y || position.y + 1 === y)
+      );
 
-    const clickedPlayer = players.find(
-      ([, position]) =>
-        position.x === x && (position.y === y || position.y + 1 === y)
-    );
-
-    if (shootingMode) {
-      if (clickedPlayer && clickedPlayer[0] !== myId) {
-        console.log(`Enemigo encontrado: ${clickedPlayer[0]}`);
-        setMessages((prev) => [
-          ...prev,
-          `Atacaste al jugador en X=${x}, Y=${y}`,
-        ]);
-        socket.emit("attack", clickedPlayer[0]);
+      if (clickedPlayer) {
+        socket.emit('castSpell', selectedSpell, clickedPlayer[0]);
+        setMessages((prev) => [...prev, `Lanzaste ${selectedSpell} en X=${x}, Y=${y}`]);
       } else {
-        setMessages((prev) => [
-          ...prev,
-          `Click en X=${x}, Y=${y}. No hay enemigos.`,
-        ]);
+        setMessages((prev) => [...prev, `Click en X=${x}, Y=${y}. No hay objetivo válido.`]);
       }
-      setShootingMode(false);
+      setTargetMode(false);
     }
+  };
+
+  const handleSpellButtonClick = () => {
+    if (!selectedSpell) {
+      setMessages((prev) => [...prev, "Selecciona un hechizo primero."]);
+      return;
+    }
+    setTargetMode(true);
+  };
+
+  const handleSelectSpell = (spell) => {
+    setSelectedSpell(spell);
+  };
+
+  const handlePotionUse = (potionType) => {
+    socket.emit('usePotion', potionType);
   };
 
   const handleShootButtonClick = () => {
@@ -174,59 +187,90 @@ export default function Game() {
     }
   };
 
-  const handleSelectSpell = (spell) => {
-    setSelectedSpell(spell);
-  };
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex">
-        <div>
+    <div className="flex h-screen w-full bg-stone-900 text-amber-100">
+      {/* First column (3/4 width) */}
+      <div className="w-3/4 flex flex-col p-4">
+        {/* Message Bar */}
+        <MessageBar messages={messages} />
+
+        {/* Canvas */}
+        <div className="mt-4">
           <canvas
             ref={canvasRef}
             width={500}
             height={500}
-            className={`border border-black ${
-              shootingMode ? "cursor-crosshair" : ""
+            className={`border-2 border-amber-700 ${
+              targetMode ? "cursor-crosshair" : ""
             }`}
             onClick={handleCanvasClick}
           />
         </div>
-        <div className="flex flex-col w-full">
-          <div className="flex w-full">
-            <div className="flex-1">
-              <h3>Mensajes:</h3>
-              <ul className="h-1/2 overflow-y-auto list-none p-0">
-                {messages.map((msg, index) => (
-                  <li key={index}>{msg}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex-1">
-              <h3>Jugadores:</h3>
-              <ul>
-                {players.map(([id, position, health]) => (
-                  <li key={id}>
-                    {id === myId ? "Tú" : `Jugador ${id}`}:
-                    {` Posición: (${position.x}, ${position.y}) HP: ${health}`}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex-1">
-              <h3>Tu posición:</h3>
-              {/* Añade aquí el contenido de tu posición */}
-            </div>
-          </div>
-          <div className="flex justify-center mt-4">
+      </div>
+
+      {/* Second column (1/4 width) */}
+      <div className="w-1/4 flex flex-col p-4 bg-stone-800">
+        {/* Player ID and Health */}
+        <div className="mb-4">
+          <h3 className="text-lg font-bold text-amber-500">Tu estado:</h3>
+          {players.map(([id, position, health,mana, poisoned]) => (
+            id === myId && (
+              <div key={id} className="mt-2">
+                <p>Posición: ({position.x}, {position.y})</p>
+                <HealthBar health={health} maxHealth={10} poisoned={poisoned} />
+                <ManaBar mana={mana} maxMana={15} />
+
+              </div>
+            )
+          ))}
+        </div>
+
+        {/* Spell and Potion Selector */}
+        <div className="mb-4">
+          <div className="flex mb-2">
             <button
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-700"
-              onClick={handleShootButtonClick}
+              className={`flex-1 py-2 ${selectedTab === 'spells' ? 'bg-amber-600' : 'bg-stone-700'} text-white rounded-tl rounded-tr`}
+              onClick={() => setSelectedTab('spells')}
             >
-              Activar modo de disparo
+              Hechizos
+            </button>
+            <button
+              className={`flex-1 py-2 ${selectedTab === 'potions' ? 'bg-amber-600' : 'bg-stone-700'} text-white rounded-tl rounded-tr`}
+              onClick={() => setSelectedTab('potions')}
+            >
+              Pociones
             </button>
           </div>
-          <SpellSelector onSelectSpell={handleSelectSpell} />
+          {selectedTab === 'spells' ? (
+            <>
+              <SpellSelector onSelectSpell={handleSelectSpell} />
+              <button
+                className="mt-2 w-full px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition duration-200 ease-in-out"
+                onClick={handleSpellButtonClick}
+              >
+                Lanzar hechizo
+              </button>
+            </>
+          ) : (
+            <PotionSelector onUsePotion={handlePotionUse} />
+          )}
+        </div>
+
+        {/* Player List */}
+        <div>
+          <h3 className="text-lg font-bold text-amber-500">Jugadores:</h3>
+          <ul className="mt-2 space-y-2">
+            {players.map(([id, position, health, poisoned]) => (
+              id !== myId && (
+                <li key={id} className="flex flex-col">
+                  <p>Jugador {id.substr(0, 4)}</p>
+                  <p>Posición: ({position.x}, {position.y})</p>
+                  <HealthBar health={health} maxHealth={10} poisoned={poisoned} />
+                </li>
+              )
+            ))}
+          </ul>
         </div>
       </div>
     </div>
