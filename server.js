@@ -35,15 +35,24 @@ app.prepare().then(() => {
     do {
       position = {
         x: Math.floor(Math.random() * 50),
-        y: Math.floor(Math.random() * 48),
+        y: Math.floor(Math.random() * 48), // Cambiado de 49 a 48
       };
-    } while (terrain[position.y][position.x] !== 1);
+    } while (
+      terrain[position.y][position.x] !== 1 ||
+      terrain[position.y + 1][position.x] !== 1
+    );
 
     // Guarda el jugador con el socket.id como clave
     players.set(socket.id, { position, health: 10, mana: 15, poisoned: false });
 
     // Envía la posición inicial al jugador
-    socket.emit("init", { id: socket.id, position, health: 10, mana: 15, terrain });
+    socket.emit("init", {
+      id: socket.id,
+      position,
+      health: 10,
+      mana: 15,
+      terrain,
+    });
 
     // Envía la lista actualizada de jugadores a todos
     io.emit(
@@ -69,9 +78,29 @@ app.prepare().then(() => {
         ])
       );
     });
+
+
+    // Modifica la función de generación de posición inicial
+    do {
+      position = {
+        x: Math.floor(Math.random() * 50),
+        y: Math.floor(Math.random() * 48), // Cambiado de 49 a 48
+      };
+    } while (
+      terrain[position.y][position.x] !== 1 ||
+      terrain[position.y + 1][position.x] !== 1
+    );
+
+    // Modifica la lógica de movimiento
     socket.on("move", (newPosition) => {
       const player = players.get(socket.id);
-      if (player && terrain[newPosition.y][newPosition.x] === 1) {
+      if (
+        player &&
+        terrain[newPosition.y][newPosition.x] === 1 &&
+        terrain[newPosition.y + 1][newPosition.x] === 1 &&
+        newPosition.y < 48
+      ) {
+        // Asegurarse de que no se salga del mapa
         player.position = newPosition;
         players.set(socket.id, player);
         io.emit(

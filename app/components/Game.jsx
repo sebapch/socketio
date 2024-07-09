@@ -179,7 +179,7 @@ export default function Game() {
         newPosition.y = Math.max(0, newPosition.y - 1);
         break;
       case "ArrowDown":
-        newPosition.y = Math.min(47, newPosition.y + 1); // 47 porque el jugador ocupa 2 celdas de altura
+        newPosition.y = Math.min(48, newPosition.y + 1); // 47 porque el jugador ocupa 2 celdas de altura
         break;
       case "ArrowLeft":
         newPosition.x = Math.max(0, newPosition.x - 1);
